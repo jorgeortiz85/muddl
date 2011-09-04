@@ -5,9 +5,30 @@ case class CodeGenResult(annotatedSchema: AnnotatedRecordSchema, code: String)
 object CodeGen {
   def codeGen(schema: RecordSchema): CodeGenResult = {
     val annotated = Reflection.annotateRecord(schema)
-    val fields = annotated.fields
-    val packageName = annotated.packageName
-    val className = annotated.className
+    import annotated.{packageName}
+
+    val gens =
+      Vector(
+        genBaseTrait _,
+        genMetaObject _,
+        genStrictClass _,
+        genLazyClass _,
+        genMutableClass _,
+        genDecoratorClass _,
+        genDeserializerClass _)
+    val code = 
+      (<template>
+package {packageName}
+
+import com.foursquare.gol.{{Record, Field, Deserializer, MetaRecord, MutableRecord, FieldMutation}}
+
+{gens.map(f => f(annotated)).mkString("\n\n")}
+      </template>).text.trim
+    CodeGenResult(annotated, code)
+  }
+
+  def genBaseTrait(annotated: AnnotatedRecordSchema): String = {
+    import annotated.{schema, fields, packageName, className}
 
     val traitFields = 
       fields.map({ field =>
@@ -15,16 +36,18 @@ object CodeGen {
   def {field.longName} : {field.tpe}
         </template>).text.trim
       })
+    
+    (<template>
+trait {className} extends Record[{className}] {{
+  override def meta = {className}
 
-    val mutableFields =
-      fields.map({ field =>
-        (<template>
-  override def {field.longName} : {field.tpe} =
-    _mutations.get({className}.{field.longName}).map(_.newValue.asInstanceOf[{field.tpe}]).getOrElse(underlying.{field.longName})
-  def {field.longName}_=(new{field.longName}: {field.tpe}): Unit =
-    _mutations.put({className}.{field.longName}, FieldMutation(this.{field.longName}, new{field.longName}))
-        </template>).text.trim
-      })
+  {traitFields.mkString("\n  ").trim}
+}}
+    </template>).text.trim
+  }
+
+  def genMetaObject(annotated: AnnotatedRecordSchema): String = {
+    import annotated.{schema, fields, packageName, className}
 
     val metaFields =
       fields.map({ field =>
@@ -43,16 +66,79 @@ object CodeGen {
     val fieldNames =
       fields.map(f => className + "." + f.longName)
 
-    val strictFields =
+    (<template>
+object {className} extends MetaRecord[{className}] {{
+  {metaFields.mkString("\n\n  ").trim}
+
+  override val fields: Seq[Field[{className}, _]] = Vector(
+    {fieldNames.mkString(",\n    ").trim}
+  )
+}}
+    </template>).text.trim
+  }
+
+  def genMutableClass(annotated: AnnotatedRecordSchema): String = {
+    import annotated.{schema, fields, packageName, className}
+
+    val mutableFields =
       fields.map({ field =>
         (<template>
-  override val {field.longName} : {field.tpe} =
-    serializer.deserialize(source, {className}.{field.longName})
+  override def {field.longName} : {field.tpe} =
+    _mutations.get({className}.{field.longName}).map(_.newValue.asInstanceOf[{field.tpe}]).getOrElse(underlying.{field.longName})
+  def {field.longName}_=(new{field.longName}: {field.tpe}): Unit =
+    _mutations.put({className}.{field.longName}, FieldMutation(this.{field.longName}, new{field.longName}))
         </template>).text.trim
       })
 
-    val lazyFields =
-      strictFields.map(str => str.patch(str.indexOfSlice("val "), "lazy ", 0))
+    (<template>
+class {className}Mutable protected (underlying: {className}) extends {className} with MutableRecord[{className}] {{
+  {mutableFields.mkString("\n  ").trim}
+}}
+    </template>).text.trim
+  }
+
+  def genDeserializeField(decl: String, className: String)(field: AnnotatedFieldSchema): String = {
+    val tpeName = field.baseTpe.replace('.', '$')
+    val required = !field.schema.isOptional
+
+    if (field.schema.isOptional)
+      (<template>
+  override {decl} {field.longName} : {field.tpe} =
+    deserializer.deserialize${tpeName}(source, {className}.{field.longName})
+      </template>).text.trim
+    else
+      (<template>
+  override {decl} {field.longName} : {field.tpe} =
+    deserializer.deserializeRequired(deserializer.deserialize${tpeName}(source, {className}.{field.longName}), {className}.{field.longName})
+      </template>).text.trim
+  }
+
+  def genStrictClass(annotated: AnnotatedRecordSchema): String = {
+    import annotated.{schema, fields, packageName, className}
+
+    val strictFields = fields.map(genDeserializeField("val", className) _)
+
+    (<template>
+class {className}Strict[S] protected (source: S, deserializer: {className}Deserializer {{ type Source = S }}) extends {className} {{
+  {strictFields.mkString("\n  ").trim}
+}}
+    </template>).text.trim
+  }
+
+  def genLazyClass(annotated: AnnotatedRecordSchema): String = {
+    import annotated.{schema, fields, packageName, className}
+
+    val lazyFields = fields.map(genDeserializeField("lazy val", className) _)
+
+    (<template>
+class {className}Lazy[S] protected (source: S, deserializer: {className}Deserializer {{ type Source = S }}) extends {className} {{
+  {lazyFields.mkString("\n  ").trim}
+}}
+    </template>).text.trim
+  }
+
+  def genDecoratorClass(annotated: AnnotatedRecordSchema): String = {
+    import annotated.{schema, fields, packageName, className}
 
     val decoratorFields =
       fields.map({ field =>
@@ -61,72 +147,73 @@ object CodeGen {
         </template>).text.trim
       })
 
-    val serializerPatterns =
-      fields.map({ field =>
-        val tpeName = field.baseTpe.replace('.', '$')
-        (<template>
-    case f @ {className}.{field.longName} => unsafeCastField(f, hooks.deserialize${tpeName}(source, f))
-        </template>).text.trim
-      })
+    (<template>
+class {className}Decorator protected (decorated: {className}) extends {className} {{
+  {decoratorFields.mkString("\n  ").trim}
+}}
+    </template>).text.trim
+  }
 
-    val serializerHookMethods =
-      fields.map({ field =>
+  def genDeserializerClass(annotated: AnnotatedRecordSchema): String = {
+    import annotated.{schema, fields, packageName, className}
+
+    // TODO(jorge): HACK. Embeds between different packages will break.
+    def isEmbedded(field: AnnotatedFieldSchema): Boolean =
+      field.baseTpe.startsWith(packageName)
+
+    val (embeddedFields, regularFields) = fields.partition(isEmbedded)
+
+    val embeddedNames = embeddedFields.map(_.baseTpe.split('.').last).distinct
+    val embeddedNewMethodNames = className +: embeddedNames
+    val selfType = embeddedNames.map(name => name+"Deserializer").mkString(" with ")
+
+    val embeddedNewMethods =
+      embeddedNewMethodNames.map({ name =>
+        (<template>
+  def new{name}(source: Source): Option[{name}]
+        </template>).text.trim
+      }).distinct
+
+    val regularDeserializeMethods =
+      regularFields.map({ field =>
         val tpeName = field.baseTpe.replace('.', '$')
+
         (<template>
   def deserialize${tpeName}(source: Source, field: Field[_, _]): Option[{field.baseTpe}]
         </template>).text.trim
       }).distinct
 
-    val code =
+    val deserializeEmbedded =
       (<template>
-package {packageName}
-
-import com.foursquare.gol.{{Record, Field, Serializer, MetaRecord, MutableRecord, FieldMutation}}
-
-trait {className} extends Record[{className}] {{
-  override def meta = {className}
-
-  {traitFields.mkString("\n  ").trim}
-}}
-
-class {className}Mutable protected (underlying: {className}) extends {className} with MutableRecord[{className}] {{
-  {mutableFields.mkString("\n  ").trim}
-}}
-
-object {className} extends MetaRecord[{className}] {{
-  {metaFields.mkString("\n\n  ").trim}
-
-  override val fields: Seq[Field[{className}, _]] = Vector(
-    {fieldNames.mkString(",\n    ").trim}
-  )
-}}
-
-class {className}Decorator protected (decorated: {className}) extends {className} {{
-  {decoratorFields.mkString("\n  ").trim}
-}}
-
-class {className}Strict[Source] protected (source: Source, serializer: Serializer[{className}, Source]) extends {className} {{
-  {strictFields.mkString("\n  ").trim}
-}}
-
-class {className}Lazy[Source] protected (source: Source, serializer: Serializer[{className}, Source]) extends {className} {{
-  {lazyFields.mkString("\n  ").trim}
-}}
-
-class {className}Serializer[S] protected (hooks: {className}SerializerHooks {{ type Source = S }}) extends Serializer[{className}, S] {{
-  // TODO(jorge): Do we need to be concerned about boxing?
-  override def deserialize[F](source: S, field: Field[{className}, F]): F = field match {{
-    {serializerPatterns.mkString("\n    ").trim}
-  }}
-}}
-
-trait {className}SerializerHooks {{
-  type Source
-
-  {serializerHookMethods.mkString("\n  ").trim}
-}}
+  def deserializeEmbedded(source: Source, field: Field[_, _]): Option[Source]
       </template>).text.trim
 
-    CodeGenResult(annotated, code)
+    val embeddedDeserializeMethods =
+      embeddedFields.map({ field =>
+        val longTpeName = field.baseTpe.replace('.', '$')
+        val tpeName = field.baseTpe.split('.').last
+
+        (<template>
+  def deserialize${longTpeName}(source: Source, field: Field[_, _]): Option[{field.baseTpe}] =
+    deserializeEmbedded(source, field).flatMap(new{tpeName} _)
+        </template>).text.trim
+      }).distinct
+
+  val body =
+    (<template>
+  type Source
+
+  {embeddedNewMethods.mkString("\n  ")}
+
+  {regularDeserializeMethods.mkString("\n  ")}
+  {if (!embeddedFields.isEmpty) deserializeEmbedded else ""}
+  {embeddedDeserializeMethods.mkString("\n  ")}
+    </template>).text.trim
+
+    (<template>
+trait {className}Deserializer extends Deserializer {{ {if (!selfType.isEmpty) "self: " + selfType + " =>" else ""}
+  {body}
+}}
+    </template>).text.trim
   }
 }
