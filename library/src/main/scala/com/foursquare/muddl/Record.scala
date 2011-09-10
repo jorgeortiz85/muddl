@@ -1,4 +1,4 @@
-package com.foursquare.gol
+package com.foursquare.muddl
 
 import scala.runtime.ScalaRunTime
 

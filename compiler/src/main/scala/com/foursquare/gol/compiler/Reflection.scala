@@ -1,4 +1,4 @@
-package com.foursquare.gol.compiler
+package com.foursquare.muddl.compiler
 
 import java.lang.reflect.Method
 

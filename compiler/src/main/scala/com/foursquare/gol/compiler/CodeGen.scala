@@ -1,4 +1,4 @@
-package com.foursquare.gol.compiler
+package com.foursquare.muddl.compiler
 
 case class CodeGenResult(annotatedSchema: AnnotatedRecordSchema, code: String)
 
@@ -20,7 +20,7 @@ object CodeGen {
       (<template>
 package {packageName}
 
-import com.foursquare.gol.{{Record, Field, Deserializer, MetaRecord, MutableRecord, FieldMutation}}
+import com.foursquare.muddl.{{Record, Field, Deserializer, MetaRecord, MutableRecord, FieldMutation}}
 
 {gens.map(f => f(annotated)).mkString("\n\n")}
       </template>).text.trim

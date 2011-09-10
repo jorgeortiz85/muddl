@@ -1,4 +1,4 @@
-package com.foursquare.gol.compiler
+package com.foursquare.muddl.compiler
 
 trait RecordSchema {
   def field[T : Manifest](number: Int, shortName: String): FieldSchema[T] =

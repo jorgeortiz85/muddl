@@ -1,4 +1,4 @@
-package com.foursquare.gol.compiler
+package com.foursquare.muddl.compiler
 
 case class AnnotatedFieldSchema(schema: FieldSchema[_], longName: String) {
   def number: Int = schema.number

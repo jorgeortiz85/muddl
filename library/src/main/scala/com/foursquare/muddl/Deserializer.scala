@@ -1,4 +1,4 @@
-package com.foursquare.gol
+package com.foursquare.muddl
 
 sealed class DeserializationException(message: String) extends RuntimeException(message)
 case class MissingRequiredFieldException(field: UntypedField) extends DeserializationException("Missing required field: " + field.shortName)

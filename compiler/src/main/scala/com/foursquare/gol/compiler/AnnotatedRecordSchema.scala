@@ -1,4 +1,4 @@
-package com.foursquare.gol.compiler
+package com.foursquare.muddl.compiler
 
 case class AnnotatedRecordSchema(
   schema: RecordSchema,
