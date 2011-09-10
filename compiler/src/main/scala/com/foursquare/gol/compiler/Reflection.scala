@@ -1,4 +1,4 @@
-package com.foursquare.gol
+package com.foursquare.gol.compiler
 
 import java.lang.reflect.Method
 

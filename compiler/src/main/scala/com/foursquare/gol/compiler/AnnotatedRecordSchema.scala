@@ -1,4 +1,4 @@
-package com.foursquare.gol
+package com.foursquare.gol.compiler
 
 case class AnnotatedRecordSchema(
   schema: RecordSchema,

@@ -1,4 +1,4 @@
-package com.foursquare.gol
+package com.foursquare.gol.compiler
 
 case class CodeGenResult(annotatedSchema: AnnotatedRecordSchema, code: String)
 
@@ -12,9 +12,9 @@ object CodeGen {
         genBaseTrait _,
         genMetaObject _,
         genStrictClass _,
-        genLazyClass _,
+        // genLazyClass _,
         genMutableClass _,
-        genDecoratorClass _,
+        // genDecoratorClass _,
         genDeserializerClass _)
     val code = 
       (<template>
@@ -42,6 +42,8 @@ trait {className} extends Record[{className}] {{
   override def meta = {className}
 
   {traitFields.mkString("\n  ").trim}
+
+  override def canEqual(that: Any): Boolean = that.isInstanceOf[{className}]
 }}
     </template>).text.trim
   }
@@ -99,18 +101,19 @@ class {className}Mutable protected (underlying: {className}) extends {className}
 
   def genDeserializeField(decl: String, className: String)(field: AnnotatedFieldSchema): String = {
     val tpeName = field.baseTpe.replace('.', '$')
-    val required = !field.schema.isOptional
 
-    if (field.schema.isOptional)
-      (<template>
+    val deserializeMethod =
+      if (field.schema.isRepeated)
+        "deserializeRepeated"
+      else if (field.schema.isOptional)
+        "deserializeOptional"
+      else
+        "deserializeRequired"
+
+    (<template>
   override {decl} {field.longName} : {field.tpe} =
-    deserializer.deserialize${tpeName}(source, {className}.{field.longName})
-      </template>).text.trim
-    else
-      (<template>
-  override {decl} {field.longName} : {field.tpe} =
-    deserializer.deserializeRequired(deserializer.deserialize${tpeName}(source, {className}.{field.longName}), {className}.{field.longName})
-      </template>).text.trim
+    d.{deserializeMethod}(obj, {className}.{field.longName}, d.deserialize${tpeName} _)
+    </template>).text.trim
   }
 
   def genStrictClass(annotated: AnnotatedRecordSchema): String = {
@@ -119,7 +122,7 @@ class {className}Mutable protected (underlying: {className}) extends {className}
     val strictFields = fields.map(genDeserializeField("val", className) _)
 
     (<template>
-class {className}Strict[S] protected (source: S, deserializer: {className}Deserializer {{ type Source = S }}) extends {className} {{
+class {className}Strict[A] protected (obj: A, d: {className}Deserializer {{ type Obj = A }}) extends {className} {{
   {strictFields.mkString("\n  ").trim}
 }}
     </template>).text.trim
@@ -131,7 +134,7 @@ class {className}Strict[S] protected (source: S, deserializer: {className}Deseri
     val lazyFields = fields.map(genDeserializeField("lazy val", className) _)
 
     (<template>
-class {className}Lazy[S] protected (source: S, deserializer: {className}Deserializer {{ type Source = S }}) extends {className} {{
+class {className}Lazy[A] protected (obj: A, d: {className}Deserializer {{ type Obj = A }}) extends {className} {{
   {lazyFields.mkString("\n  ").trim}
 }}
     </template>).text.trim
@@ -158,19 +161,22 @@ class {className}Decorator protected (decorated: {className}) extends {className
     import annotated.{schema, fields, packageName, className}
 
     // TODO(jorge): HACK. Embeds between different packages will break.
-    def isEmbedded(field: AnnotatedFieldSchema): Boolean =
+    def isEmbeddedField(field: AnnotatedFieldSchema): Boolean =
       field.baseTpe.startsWith(packageName)
 
-    val (embeddedFields, regularFields) = fields.partition(isEmbedded)
+    def embeddedFieldName(field: AnnotatedFieldSchema): String =
+      field.baseTpe.split('.').last
 
-    val embeddedNames = embeddedFields.map(_.baseTpe.split('.').last).distinct
+    val (embeddedFields, regularFields) = fields.partition(isEmbeddedField)
+
+    val embeddedNames = embeddedFields.map(embeddedFieldName).distinct
     val embeddedNewMethodNames = className +: embeddedNames
     val selfType = embeddedNames.map(name => name+"Deserializer").mkString(" with ")
 
     val embeddedNewMethods =
       embeddedNewMethodNames.map({ name =>
         (<template>
-  def new{name}(source: Source): Option[{name}]
+  def new{name}(obj: Obj): Option[{name}]
         </template>).text.trim
       }).distinct
 
@@ -179,34 +185,26 @@ class {className}Decorator protected (decorated: {className}) extends {className
         val tpeName = field.baseTpe.replace('.', '$')
 
         (<template>
-  def deserialize${tpeName}(source: Source, field: Field[_, _]): Option[{field.baseTpe}]
+  def deserialize${tpeName}(elem: Elem): Option[{field.baseTpe}]
         </template>).text.trim
       }).distinct
 
-    val deserializeEmbedded =
-      (<template>
-  def deserializeEmbedded(source: Source, field: Field[_, _]): Option[Source]
-      </template>).text.trim
-
     val embeddedDeserializeMethods =
       embeddedFields.map({ field =>
-        val longTpeName = field.baseTpe.replace('.', '$')
-        val tpeName = field.baseTpe.split('.').last
+        val tpeName = field.baseTpe.replace('.', '$')
+        val name = embeddedFieldName(field)
 
         (<template>
-  def deserialize${longTpeName}(source: Source, field: Field[_, _]): Option[{field.baseTpe}] =
-    deserializeEmbedded(source, field).flatMap(new{tpeName} _)
+  def deserialize${tpeName}(elem: Elem): Option[{field.baseTpe}] =
+    deserializeObj(elem).flatMap(new{name})
         </template>).text.trim
       }).distinct
 
   val body =
     (<template>
-  type Source
-
   {embeddedNewMethods.mkString("\n  ")}
 
   {regularDeserializeMethods.mkString("\n  ")}
-  {if (!embeddedFields.isEmpty) deserializeEmbedded else ""}
   {embeddedDeserializeMethods.mkString("\n  ")}
     </template>).text.trim
 
