@@ -15,12 +15,13 @@ object CodeGen {
         // genLazyClass _,
         genMutableClass _,
         // genDecoratorClass _,
-        genDeserializerClass _)
+        genDeserializerClass _,
+        genSerializerClass _)
     val code = 
       (<template>
 package {packageName}
 
-import com.foursquare.muddl.{{Record, Field, Deserializer, MetaRecord, MutableRecord, FieldMutation}}
+import com.foursquare.muddl.{{Record, Field, Serializer, Deserializer, MetaRecord, MutableRecord, FieldMutation}}
 
 {gens.map(f => f(annotated)).mkString("\n\n")}
       </template>).text.trim
@@ -210,6 +211,79 @@ class {className}Decorator protected (decorated: {className}) extends {className
 
     (<template>
 trait {className}Deserializer extends Deserializer {{ {if (!selfType.isEmpty) "self: " + selfType + " =>" else ""}
+  {body}
+}}
+    </template>).text.trim
+  }
+
+  def genSerializerClass(annotated: AnnotatedRecordSchema): String = {
+    import annotated.{schema, fields, packageName, className}
+
+    // TODO(jorge): HACK. Embeds between different packages will break.
+    def isEmbeddedField(field: AnnotatedFieldSchema): Boolean =
+      field.baseTpe.startsWith(packageName)
+
+    def embeddedFieldName(field: AnnotatedFieldSchema): String =
+      field.baseTpe.split('.').last
+
+    val (embeddedFields, regularFields) = fields.partition(isEmbeddedField)
+
+    val embeddedNames = embeddedFields.map(embeddedFieldName).distinct
+    val selfType = embeddedNames.map(name => name+"Serializer").mkString(" with ")
+
+    val serializeFields =
+      fields.map({ field =>
+        val serializeMethod =
+          if (isEmbeddedField(field))
+            "serialize" + embeddedFieldName(field)
+          else
+            "serialize$" + field.baseTpe.replace('.', '$')
+        
+        if (field.schema.isRepeated)
+          (<template>
+            serializeArr(obj.{field.longName}, {serializeMethod} _)
+          </template>).text.trim
+        else if (field.schema.isOptional)
+          (<template>
+            obj.{field.longName}.map({serializeMethod} _)
+          </template>).text.trim
+        else
+          (<template>
+            Some({serializeMethod}(obj.{field.longName}))
+          </template>).text.trim
+      })
+
+    val serializeMethod =
+      (<template>
+  def serialize{className}(obj: {className}): Obj = {{
+    val fields = obj.meta.fields
+    val values =
+      Vector[Option[Elem]](
+        {serializeFields.mkString(",\n        ")}
+      )
+
+    serializeObj(fields zip values)
+  }}
+      </template>).text.trim
+
+    val regularSerializeMethods =
+      regularFields.map({ field =>
+        val tpeName = field.baseTpe.replace('.', '$')
+
+        (<template>
+  def serialize${tpeName}(elem: {field.baseTpe}): Elem
+        </template>).text.trim
+      }).distinct
+
+  val body =
+    (<template>
+  {serializeMethod}
+
+  {regularSerializeMethods.mkString("\n  ")}
+    </template>).text.trim
+
+    (<template>
+trait {className}Serializer extends Serializer {{ {if (!selfType.isEmpty) "self: " + selfType + " =>" else ""}
   {body}
 }}
     </template>).text.trim
