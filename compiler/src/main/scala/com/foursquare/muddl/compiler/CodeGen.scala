@@ -14,7 +14,7 @@ object CodeGen {
         genStrictClass _,
         // genLazyClass _,
         genMutableClass _,
-        // genDecoratorClass _,
+        genDecoratorClass _,
         genDeserializerClass _,
         genSerializerClass _)
     val code = 
