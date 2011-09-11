@@ -4,6 +4,10 @@ sealed class DeserializationException(message: String) extends RuntimeException(
 case class MissingRequiredFieldException(field: UntypedField) extends DeserializationException("Missing required field: " + field.shortName)
 case class CouldntDeserializeException(field: UntypedField, value: Any) extends DeserializationException("Couldn't deserialize field: " + field.shortName + " (value: "+value+")")
 
+/**
+ * This trait defines the basics of deserialization. Deserializer implementations must support
+ * Objects, Arrays, and Elements. They must also support required, optional, and repeated fields.
+ */
 trait Deserializer {
   type Obj
   type Arr

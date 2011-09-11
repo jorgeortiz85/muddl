@@ -1,5 +1,10 @@
 package com.foursquare.muddl.compiler
 
+/**
+ * This class describes a field in a schema.
+ * Fields must have a number, a short name, and a type.
+ * Fields can be optional, required, or repeated.
+ */
 case class FieldSchema[T](
   number: Int,
   shortName: String,

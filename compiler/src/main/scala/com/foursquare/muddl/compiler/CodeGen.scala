@@ -2,6 +2,9 @@ package com.foursquare.muddl.compiler
 
 case class CodeGenResult(annotatedSchema: AnnotatedRecordSchema, code: String)
 
+/**
+ * This class generates code for a given schema.
+ */
 object CodeGen {
   def codeGen(schema: RecordSchema): CodeGenResult = {
     val annotated = Reflection.annotateRecord(schema)

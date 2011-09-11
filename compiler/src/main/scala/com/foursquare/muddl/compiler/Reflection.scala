@@ -2,6 +2,10 @@ package com.foursquare.muddl.compiler
 
 import java.lang.reflect.Method
 
+/**
+ * This class takes RecordSchemas and FieldSchemas and annotates them with some additional
+ * information based on Java reflection.
+ */
 object Reflection {
   def annotateRecord(schema: RecordSchema): AnnotatedRecordSchema = {
     val klass = schema.getClass
@@ -24,5 +28,6 @@ object Reflection {
     AnnotatedFieldSchema(field, method.getName)
   }
 
+  // TODO(jorge): Write a compiler plugin that can implement this method.
   def allSchema: Seq[RecordSchema] = error("synthetic method not defined by compiler plugin")
 }

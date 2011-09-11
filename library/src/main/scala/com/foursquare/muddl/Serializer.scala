@@ -1,5 +1,9 @@
 package com.foursquare.muddl
 
+/**
+ * This trait defines the basics of serialization. Serializer implementations must support
+ * Objects, Arrays, and Elements.
+ */
 trait Serializer {
   type Elem
   type Obj <: Elem

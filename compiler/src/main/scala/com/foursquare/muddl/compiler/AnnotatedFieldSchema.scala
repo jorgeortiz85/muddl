@@ -1,5 +1,8 @@
 package com.foursquare.muddl.compiler
 
+/**
+ * This class gives a full description of a record schema's field.
+ */
 case class AnnotatedFieldSchema(schema: FieldSchema[_], longName: String) {
   def number: Int = schema.number
   def shortName: String = schema.shortName

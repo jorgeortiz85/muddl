@@ -1,8 +1,10 @@
 package com.foursquare.muddl
 
-import java.lang.Object
-import scala.ScalaObject
-
+/**
+ * A MutableRecord is a Record that keeps a map of mutations, or changes to one of its fields.
+ *
+ * It overrides hashCode and equals to use the system defaults.
+ */
 trait MutableRecord[T <: Record[T]] extends Record[T] { self: T =>
   protected def underlying: T with Record[T]
   protected var _mutations: scala.collection.mutable.Map[Field[T, _], FieldMutation[_]] =

@@ -1,0 +1,59 @@
+Muddl - a data-definition language
+
+Muddl allows you to define schemas for your data, and it generates code to make it easy for you to work with that data in Scala. It comes with two parts: the muddl-compiler is run as part of your build process and generates code, and the muddl-library is added as a dependency to your project and required for this code to compile.
+
+
+
+Features:
+
+* Schema definition - Schemas are defined entirely in Scala. This keeps the compiler very simple. It needs to do a little bit of reflection and a lot of code generation, but all the hard work of parsing and defining the schema-language is done by the Scala compiler itself.
+
+* Optional, required, and repeated fields - A field with a base type of A can be optional (returns Option[A]), required (returns A), or repeated (returns Seq[A]). Fields are optional by default.
+
+* Embedded records - A field can consist of an embedded record.
+
+* Pluggable serialization/deserialization - Muddl is serialization-agnostic. Muddl comes with a set of traits you can implement to define your own serialization and deserialization mechanisms. As long as ir can support a few basic concepts (objects, arrays, values) that are roughly isomorphic to JSON, any serialization mechanism should work.
+
+* Type-safe serialization/deserialization - Muddl generates serialization and deserialization traits for each of your records. These traits will have an abstract method for each separate type that record needs in order to serialize/deserialize itself. If you forget to implement one of these methods, your code will not compile. This means if you add a field with a new type to your record, but forget to implement a serializer and a deserializer for this type, your code will fail to compile.
+
+* Immutable by default - Everything in Muddl is immutable by default. However, records do have a corresponding mutable class, in case you need mutability.
+
+* Edit history for mutable records - Mutable records keep track of old and new values for every mutated field. This allows you to hook in logging or tracking mechanisms at the point in which you write a record.
+
+* toString/hashCode/equals - Muddl records include a useful toString implementation, as well as proper implementations for hashCode and equals. For immutable records, hashCode and equals will work very much like they do in case classes. For mutable records, instance equality is used for hashCode and equals.
+
+* Decorators for easy extension - Muddl records very purposefully take a "just the data" philosophy. However, it's often convenient to have derived data or helper methods available with your record object. To facilitate this, Muddl generates decorator classes for each record. You can extend these decorate classes to add your own helper methods to your record objects.
+
+* Type-level reflection - Muddl reifies type-level reflection on fields and records. This can be used to add additional compile-time safety to libraries using Muddl records, or to facilitate run-time reflection on Muddl records.
+
+
+
+Non-features:
+
+* Database access - Muddl will not read or write from a database for you. Instead, Muddl gives you serializers and deserializers to use with Muddl records, and lets you take care of reading and writing to the database.
+
+
+
+Missing/broken/sub-optimal:
+
+* Enumerations - Muddl does not yet support enumerations, but it will soon. These are unlikely to be based on Scala's Enumeration trait. More likely, they will be a different encoding of enumerations that take advantage of code generation.
+
+* Multiple packages - Muddl generates records in the same package as the one in which their schema was defined. Currently, this works fine as long as you only ever use a single package. This will be fixed and multiple packages will be supported eventually.
+
+* Empty vs missing arrays - Currently, Muddl does not distinguish between an empty array and a missing array. Is this distinction important? Probably yes. However, working with Option[Seq[A]] is painful. Maybe make arrays required parameters by default, and only optional if explicitly marked? Tough design decisions here.
+
+* Foreign keys - Should Muddl recognize foreign keys? This requires the notion of records "with id". This could open the door for increased type safety (type of a Venue id != type of a Checkin id, even though they are both fundamentally ObjectIds) and other features (e.g., priming), but it's unclear what the best way to model this is.
+
+* Performance testing - I'm reasonably confident that Muddl records are both more space efficient and more performant than Lift's Record, but as of yet I've done no testing on this. In particular, the serialization and deserialization patterns were written with little regard for performance and it is very likely that there is room for improvement here (guided by performance tests).
+
+* Builder pattern - Currently, it is impossible to create a new Muddl record from scratch. Only existing records may be wrapped in a mutable wrapper and modified. What's the best way to create a new record? Perhaps with a mutable record that has no underlying immutable record (getting unset required fields would throw). Perhaps with a builder pattern (but this requires generating even more code).
+
+* Default values - Currently, optional fields are all Option[A]. This is somewhat cumbersome to work with, and there is no way to define default values for fields. This can be mitigated with a decorator (make the field in the record be 'addressOpt', then add an 'address' field to the decorator that adds a default value), but that's somewhat tedious. Worth thinking about how to make this better.
+
+* Schema inheritance - I have no idea whether this will work or not right now, I haven't tried it. If it doesn't work, it should be supported.
+
+* Compiler plugin - A tiny compiler plugin could help with code generation (e.g., to discover all the schemas). Not critical, but worth considering.
+
+* sbt plugin - An sbt plugin could make it slightly easier to integrate Muddl with existing sbt builds. Also not critical, but worth considering.
+
+* Field numbering - Currently, all fields in a schema must be numbered. This isn't used anywhere at the moment, but one could imagine it being useful for interop with things like protobuf or Thrift. Worth keeping, or should we get rid of it until we need it?
