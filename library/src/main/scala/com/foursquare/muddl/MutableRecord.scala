@@ -4,6 +4,7 @@ import java.lang.Object
 import scala.ScalaObject
 
 trait MutableRecord[T <: Record[T]] extends Record[T] { self: T =>
+  protected def underlying: T with Record[T]
   protected var _mutations: scala.collection.mutable.Map[Field[T, _], FieldMutation[_]] =
     scala.collection.mutable.Map()
 

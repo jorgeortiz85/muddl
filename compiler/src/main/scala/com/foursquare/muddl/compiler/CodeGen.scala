@@ -94,7 +94,7 @@ object {className} extends MetaRecord[{className}] {{
       })
 
     (<template>
-class {className}Mutable protected (underlying: {className}) extends {className} with MutableRecord[{className}] {{
+class {className}Mutable protected (override protected val underlying: {className}) extends {className} with MutableRecord[{className}] {{
   {mutableFields.mkString("\n  ").trim}
 }}
     </template>).text.trim
