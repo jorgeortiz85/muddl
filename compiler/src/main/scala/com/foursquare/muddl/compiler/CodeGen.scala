@@ -26,6 +26,9 @@ package {packageName}
 
 import com.foursquare.muddl.{{Record, Field, Serializer, Deserializer, MetaRecord, MutableRecord, FieldMutation}}
 
+/**
+ * THIS FILE WAS GENERATED AUTOMATICALLY BY MUDDL. DO NOT MODIFY.
+ */
 {gens.map(f => f(annotated)).mkString("\n\n")}
       </template>).text.trim
     CodeGenResult(annotated, code)
